@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - ENV=production
+      - DB_TYPE=mysql
+      - DB_HOST=mysql
+      - DB_USER=root
+      - DB_PASSWORD=warehouse123
+      - DB_NAME=warehouse
+      - DB_PORT=3306
+      - JWT_SECRET=your-production-secret-key-change-this
+    depends_on:
+      - mysql
+    networks:
+      - warehouse-network
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=warehouse123
+      - MYSQL_DATABASE=warehouse
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - warehouse-network
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+
+volumes:
+  mysql-data:
+
+networks:
+  warehouse-network:
+    driver: bridge
