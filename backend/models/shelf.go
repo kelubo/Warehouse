@@ -16,6 +16,8 @@ type Shelf struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	DeletedAt   *time.Time `gorm:"index" json:"deleted_at"`
+
+	Boxes []Box `gorm:"foreignKey:ShelfID" json:"boxes"`
 }
 
 func (s *Shelf) BeforeCreate(tx *gorm.DB) (err error) {

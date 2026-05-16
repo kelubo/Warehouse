@@ -92,6 +92,20 @@ func RegisterRoutes(r *gin.Engine) {
 		api.PUT("/boxes/:id", controllers.UpdateBox)
 		api.DELETE("/boxes/:id", controllers.DeleteBox)
 
+		// 单位管理
+		api.GET("/units", controllers.GetUnits)
+		api.GET("/units/:id", controllers.GetUnit)
+		api.POST("/units", controllers.CreateUnit)
+		api.PUT("/units/:id", controllers.UpdateUnit)
+		api.DELETE("/units/:id", controllers.DeleteUnit)
+
+		// 分类管理
+		api.GET("/categories", controllers.GetCategories)
+		api.GET("/categories/:id", controllers.GetCategory)
+		api.POST("/categories", controllers.CreateCategory)
+		api.PUT("/categories/:id", controllers.UpdateCategory)
+		api.DELETE("/categories/:id", controllers.DeleteCategory)
+
 		// 库存管理
 		api.GET("/inventories", controllers.GetInventories)
 		api.GET("/inventories/:id", controllers.GetInventory)

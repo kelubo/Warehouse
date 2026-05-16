@@ -84,6 +84,18 @@ func InitDB(cfg *config.Config) error {
 
 	utils.Info("Database connection established")
 
+	utils.Info("Fixing invalid foreign key references...")
+	if cfg.DBType == "mysql" {
+		// 修复 products 表中无效的外键引用
+		db.Exec(`UPDATE products p LEFT JOIN boxes b ON p.box_id = b.id SET p.box_id = NULL WHERE b.id IS NULL AND p.box_id IS NOT NULL`)
+		db.Exec(`UPDATE products p LEFT JOIN shelves s ON p.shelf_id = s.id SET p.shelf_id = NULL WHERE s.id IS NULL AND p.shelf_id IS NOT NULL`)
+		db.Exec(`UPDATE products p LEFT JOIN warehouses w ON p.warehouse_id = w.id SET p.warehouse_id = NULL WHERE w.id IS NULL AND p.warehouse_id IS NOT NULL`)
+		db.Exec(`UPDATE boxes b LEFT JOIN shelves s ON b.shelf_id = s.id SET b.shelf_id = NULL WHERE s.id IS NULL AND b.shelf_id IS NOT NULL`)
+		db.Exec(`UPDATE shelves s LEFT JOIN warehouses w ON s.warehouse_id = w.id SET s.warehouse_id = NULL WHERE w.id IS NULL AND s.warehouse_id IS NOT NULL`)
+		// 确保 products 表中有 unit 字段
+		db.Exec(`ALTER TABLE products ADD COLUMN IF NOT EXISTS unit VARCHAR(20) DEFAULT '件'`)
+	}
+
 	utils.Info("Running auto migration...")
 	err = DB.AutoMigrate(
 		&models.User{},
@@ -91,6 +103,8 @@ func InitDB(cfg *config.Config) error {
 		&models.Warehouse{},
 		&models.Shelf{},
 		&models.Box{},
+		&models.Unit{},
+		&models.Category{},
 		&models.Inventory{},
 		&models.Order{},
 		&models.OrderItem{},

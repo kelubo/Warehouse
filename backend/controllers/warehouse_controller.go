@@ -44,7 +44,7 @@ func GetWarehouses(c *gin.Context) {
 
 func GetWarehouse(c *gin.Context) {
 	var warehouse models.Warehouse
-	if err := database.DB.Where("id = ?", c.Param("id")).First(&warehouse).Error; err != nil {
+	if err := database.DB.Preload("Shelves").Where("id = ?", c.Param("id")).First(&warehouse).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "仓库不存在"})
 		return
 	}

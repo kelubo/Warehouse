@@ -58,12 +58,14 @@ func CreateProduct(c *gin.Context) {
 		return
 	}
 
-	// 检查 SKU 是否已存在
-	var existingProduct models.Product
-	database.DB.Where("sku = ?", product.SKU).First(&existingProduct)
-	if existingProduct.ID != "" {
-		c.JSON(http.StatusConflict, gin.H{"error": "SKU 已存在"})
-		return
+	// 检查 SKU 是否已存在（仅当 SKU 不为空时）
+	if product.SKU != "" {
+		var existingProduct models.Product
+		database.DB.Where("sku = ?", product.SKU).First(&existingProduct)
+		if existingProduct.ID != "" {
+			c.JSON(http.StatusConflict, gin.H{"error": "SKU 已存在"})
+			return
+		}
 	}
 
 	database.DB.Create(&product)

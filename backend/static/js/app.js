@@ -62,7 +62,7 @@ function showLoginPage() {
     document.getElementById('app').innerHTML = `
         <div class="login-container">
             <div class="login-box">
-                <h2>🏠 家庭储物管理</h2>
+                <h2>🏠 储物管理</h2>
                 <form id="loginForm">
                     <div class="form-group">
                         <label>用户名</label>
@@ -170,13 +170,15 @@ function showMainPage() {
     document.getElementById('app').innerHTML = `
         <div class="main-container">
             <div class="sidebar">
-                <div class="logo">🏠 家庭储物</div>
+                <div class="logo">🏠 储物管理</div>
                 <ul class="menu">
                     <li><a href="#" onclick="loadPage('dashboard')" id="menu-dashboard"><i>📊</i> 总览</a></li>
                     <li><a href="#" onclick="loadPage('products')" id="menu-products"><i>📦</i> 物品管理</a></li>
                     <li><a href="#" onclick="loadPage('warehouses')" id="menu-warehouses"><i>🏠</i> 储物空间</a></li>
                     <li><a href="#" onclick="loadPage('shelves')" id="menu-shelves"><i>📚</i> 置物架</a></li>
                     <li><a href="#" onclick="loadPage('boxes')" id="menu-boxes"><i>📦</i> 收纳盒</a></li>
+                    <li><a href="#" onclick="loadPage('units')" id="menu-units"><i>📏</i> 单位管理</a></li>
+                    <li><a href="#" onclick="loadPage('categories')" id="menu-categories"><i>🏷️</i> 分类管理</a></li>
                 </ul>
                 <div class="user-info">
                     <button class="logout-btn" onclick="logout()">退出登录</button>
@@ -202,7 +204,9 @@ function loadPage(page) {
         products: '物品管理',
         warehouses: '储物空间',
         shelves: '置物架',
-        boxes: '收纳盒'
+        boxes: '收纳盒',
+        units: '单位管理',
+        categories: '分类管理'
     };
     document.getElementById('page-title').textContent = titles[page];
     switch(page) {
@@ -211,6 +215,8 @@ function loadPage(page) {
         case 'warehouses': loadWarehouses(); break;
         case 'shelves': loadShelves(); break;
         case 'boxes': loadBoxes(); break;
+        case 'units': loadUnits(); break;
+        case 'categories': loadCategories(); break;
     }
 }
 
@@ -310,8 +316,8 @@ function loadProducts(page = 1, keyword = '') {
                     </div>
                 </div>
                 <table>
-                    <tr><th>名称</th><th>分类</th><th>数量</th><th>存放位置</th><th>操作</th></tr>
-                    ${products.length === 0 ? '<tr><td colspan="5" style="text-align:center;">暂无数据</td></tr>' : products.map(p => {
+                    <tr><th>名称</th><th>分类</th><th>数量</th><th>单位</th><th>存放位置</th><th>操作</th></tr>
+                    ${products.length === 0 ? '<tr><td colspan="6" style="text-align:center;">暂无数据</td></tr>' : products.map(p => {
                         const shelf = shelves.find(s => s.id === p.shelf_id);
                         const box = boxes.find(b => b.id === p.box_id);
                         const warehouse = warehouses.find(w => w.id === (box?.warehouse_id || shelf?.warehouse_id));
@@ -322,7 +328,7 @@ function loadProducts(page = 1, keyword = '') {
                             location = (warehouse?.name || '') + ' > ' + shelf.name;
                             if (p.shelf_column > 0) location += ' (列' + p.shelf_column + '-层' + p.shelf_row + ')';
                         }
-                        return '<tr><td>' + p.name + '</td><td>' + (p.category || '-') + '</td><td>' + (p.quantity || 1) + '</td><td>' + location + '</td><td><div class="btn-group"><button class="btn btn-secondary" onclick="editProduct(\'' + p.id + '\')">编辑</button><button class="btn btn-danger" onclick="deleteProduct(\'' + p.id + '\')">删除</button></div></td></tr>';
+                        return '<tr><td>' + p.name + '</td><td>' + (p.category || '-') + '</td><td>' + (p.quantity || 1) + '</td><td>' + (p.unit || '-') + '</td><td>' + location + '</td><td><div class="btn-group"><button class="btn btn-secondary" onclick="showProductDetail(\'' + p.id + '\')">详情</button><button class="btn btn-secondary" onclick="editProduct(\'' + p.id + '\')">编辑</button><button class="btn btn-danger" onclick="deleteProduct(\'' + p.id + '\')">删除</button></div></td></tr>';
                     }).join('')}
                 </table>
                 ${renderPagination('products', totalPages.products, currentPage.products)}
@@ -345,15 +351,100 @@ function editProduct(id) {
     });
 }
 
-function showProductModal(product = null) {
-    const isEdit = product !== null;
+function showProductDetail(id) {
     Promise.all([
+        fetch(`${API_BASE}/products/${id}`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取物品信息失败'); return r.json(); }),
+        fetch(`${API_BASE}/warehouses?page=1&page_size=1000`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取储物空间列表失败'); return r.json(); }),
         fetch(`${API_BASE}/shelves?page=1&page_size=1000`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取置物架列表失败'); return r.json(); }),
         fetch(`${API_BASE}/boxes?page=1&page_size=1000`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取收纳盒列表失败'); return r.json(); })
     ])
-    .then(([shelvesResult, boxesResult]) => {
+    .then(([product, warehousesResult, shelvesResult, boxesResult]) => {
+        const warehouses = warehousesResult.items || warehousesResult;
         const shelves = shelvesResult.items || shelvesResult;
         const boxes = boxesResult.items || boxesResult;
+        const warehouse = warehouses.find(w => w.id === product.warehouse_id);
+        const shelf = shelves.find(s => s.id === product.shelf_id);
+        const box = boxes.find(b => b.id === product.box_id);
+
+        let location = '-';
+        if (box) {
+            location = box.box_no;
+        } else if (shelf) {
+            location = shelf.name;
+            if (product.shelf_column > 0) location += ' (列' + product.shelf_column + '-层' + product.shelf_row + ')';
+        } else if (warehouse) {
+            location = warehouse.name;
+        }
+
+        document.getElementById('page-content').innerHTML += `
+            <div class="modal-overlay active" onclick="closeModal()">
+                <div class="modal" onclick="event.stopPropagation()" style="max-width: 800px;">
+                    <h3>物品详情</h3>
+                    <div style="margin-bottom: 15px;">
+                        <p><strong>名称：</strong>${product.name}</p>
+                        <p><strong>分类：</strong>${product.category || '-'}</p>
+                        <p><strong>数量：</strong>${product.quantity || 1}</p>
+                        <p><strong>存放位置：</strong>${location}</p>
+                        <p><strong>描述：</strong>${product.description || '-'}</p>
+                    </div>
+                    <div class="modal-footer" style="margin-top: 20px;">
+                        <button type="button" class="btn btn-secondary" onclick="closeModal()">关闭</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    })
+    .catch(error => {
+        showNotification('获取物品详情失败', 'error');
+    });
+}
+
+function updateShelfPositionVisibility() {
+    const shelfSelect = document.getElementById('productShelf');
+    const boxSelect = document.getElementById('productBox');
+    const columnInput = document.getElementById('productShelfColumn');
+    const rowInput = document.getElementById('productShelfRow');
+    const shelfPositionDiv = document.getElementById('shelfPosition');
+    
+    const shelfId = shelfSelect.value;
+    const boxId = boxSelect.value;
+    
+    if (shelfId && !boxId) {
+        shelfPositionDiv.style.display = '';
+        // 设置行列限制
+        const selectedOption = shelfSelect.options[shelfSelect.selectedIndex];
+        const maxColumns = parseInt(selectedOption.getAttribute('data-columns')) || 999;
+        const maxRows = parseInt(selectedOption.getAttribute('data-rows')) || 999;
+        
+        columnInput.max = maxColumns;
+        rowInput.max = maxRows;
+        
+        if (columnInput.value && parseInt(columnInput.value) > maxColumns) {
+            columnInput.value = maxColumns;
+        }
+        if (rowInput.value && parseInt(rowInput.value) > maxRows) {
+            rowInput.value = maxRows;
+        }
+    } else {
+        shelfPositionDiv.style.display = 'none';
+    }
+}
+
+function showProductModal(product = null) {
+    const isEdit = product !== null;
+    Promise.all([
+        fetch(`${API_BASE}/warehouses?page=1&page_size=1000`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取储物空间列表失败'); return r.json(); }),
+        fetch(`${API_BASE}/shelves?page=1&page_size=1000`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取置物架列表失败'); return r.json(); }),
+        fetch(`${API_BASE}/boxes?page=1&page_size=1000`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取收纳盒列表失败'); return r.json(); }),
+        fetch(`${API_BASE}/units`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取单位列表失败'); return r.json(); }),
+        fetch(`${API_BASE}/categories`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取分类列表失败'); return r.json(); })
+    ])
+    .then(([warehousesResult, shelvesResult, boxesResult, unitsResult, categoriesResult]) => {
+        const warehouses = warehousesResult.items || warehousesResult;
+        const shelves = shelvesResult.items || shelvesResult;
+        const boxes = boxesResult.items || boxesResult;
+        const units = unitsResult || [];
+        const categories = categoriesResult || [];
         document.getElementById('page-content').innerHTML += `
             <div class="modal-overlay active" onclick="closeModal()">
                 <div class="modal" onclick="event.stopPropagation()">
@@ -361,12 +452,14 @@ function showProductModal(product = null) {
                     <form id="productForm">
                         <div class="form-group"><label>物品名称</label><input type="text" id="productName" value="${product?.name || ''}" required></div>
                         <div class="form-row">
-                            <div class="form-group"><label>分类</label><input type="text" id="productCategory" value="${product?.category || ''}" placeholder="如：衣物、书籍、电子产品"></div>
-                            <div class="form-group"><label>数量</label><input type="number" id="productQuantity" value="${product?.quantity || 1}" min="1"></div>
+                            <div class="form-group"><label>分类</label><select id="productCategory"><option value="">请选择</option>${categories.map(c => '<option value="' + c.name + '"' + (product?.category === c.name ? ' selected' : '') + '>' + c.name + '</option>').join('')}</select></div>
+                            <div class="form-group"><label>数量</label><input type="number" id="productQuantity" value="${product?.quantity || 1}" min="1" style="width:80px;"></div>
+                            <div class="form-group"><label>单位</label><select id="productUnit" style="width:80px;"><option value="">请选择</option>${units.map(u => '<option value="' + u.name + '"' + (product?.unit === u.name ? ' selected' : '') + '>' + u.name + '</option>').join('')}</select></div>
                         </div>
-                        <div class="form-group"><label>存放位置 - 置物架</label><select id="productShelf"><option value="">无</option>${shelves.map(s => '<option value="' + s.id + '"' + (product?.shelf_id === s.id ? ' selected' : '') + '>' + s.name + '</option>').join('')}</select></div>
+                        <div class="form-group"><label>存放位置 - 储物空间</label><select id="productWarehouse"><option value="">无</option>${warehouses.map(w => '<option value="' + w.id + '"' + (product?.warehouse_id === w.id ? ' selected' : '') + '>' + w.name + '</option>').join('')}</select></div>
+                        <div class="form-group"><label>存放位置 - 置物架</label><select id="productShelf"><option value="">无</option>${shelves.map(s => '<option value="' + s.id + '" data-columns="' + s.columns + '" data-rows="' + s.rows + '"' + (product?.shelf_id === s.id ? ' selected' : '') + '>' + s.name + '</option>').join('')}</select></div>
                         <div class="form-group"><label>存放位置 - 收纳盒</label><select id="productBox"><option value="">无</option>${boxes.map(b => '<option value="' + b.id + '"' + (product?.box_id === b.id ? ' selected' : '') + '>' + b.box_no + '</option>').join('')}</select></div>
-                        <div class="form-row" id="shelfPosition" ${product?.shelf_id ? '' : 'style="display:none"'}>
+                        <div class="form-row" id="shelfPosition" ${(product?.shelf_id && !product?.box_id) ? '' : 'style="display:none"'}>
                             <div class="form-group"><label>列</label><input type="number" id="productShelfColumn" value="${product?.shelf_column || ''}" min="1"></div>
                             <div class="form-group"><label>层</label><input type="number" id="productShelfRow" value="${product?.shelf_row || ''}" min="1"></div>
                         </div>
@@ -381,9 +474,8 @@ function showProductModal(product = null) {
             </div>
         `;
         document.getElementById('productForm').addEventListener('submit', handleProductSubmit);
-        document.getElementById('productShelf').addEventListener('change', function() {
-            document.getElementById('shelfPosition').style.display = this.value ? '' : 'none';
-        });
+        document.getElementById('productShelf').addEventListener('change', updateShelfPositionVisibility);
+        document.getElementById('productBox').addEventListener('change', updateShelfPositionVisibility);
     })
     .catch(error => {
         showNotification('加载表单数据失败: ' + error.message, 'error');
@@ -396,7 +488,9 @@ function handleProductSubmit(e) {
     const data = {
         name: document.getElementById('productName').value,
         category: document.getElementById('productCategory').value,
+        unit: document.getElementById('productUnit').value,
         quantity: parseInt(document.getElementById('productQuantity').value) || 1,
+        warehouse_id: document.getElementById('productWarehouse').value,
         shelf_id: document.getElementById('productShelf').value,
         box_id: document.getElementById('productBox').value,
         shelf_column: parseInt(document.getElementById('productShelfColumn').value) || 0,
@@ -406,7 +500,19 @@ function handleProductSubmit(e) {
     const url = id ? `${API_BASE}/products/${id}` : `${API_BASE}/products`;
     const method = id ? 'PUT' : 'POST';
     fetch(url, { method, headers: { ...getAuthHeader(), 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
-    .then(() => { showNotification(id ? '物品更新成功' : '物品添加成功', 'success'); closeModal(); loadProducts(); })
+    .then(response => {
+        if (response.ok) {
+            showNotification(id ? '物品更新成功' : '物品添加成功', 'success');
+            closeModal();
+            loadProducts();
+        } else {
+            response.json().then(data => {
+                showNotification(data.error || '操作失败', 'error');
+            }).catch(() => {
+                showNotification('操作失败', 'error');
+            });
+        }
+    })
     .catch(() => { showNotification('操作失败', 'error'); });
 }
 
@@ -446,15 +552,13 @@ function loadWarehouses(page = 1, keyword = '') {
             <div class="card">
                 <div class="card-header">
                     <h2>储物空间列表</h2>
-                    <div class="search-bar">
-                        <input type="text" id="warehouseSearch" placeholder="搜索储物空间名称或位置..." value="${searchKeywords.warehouses}">
-                        <button class="btn btn-secondary" onclick="loadWarehouses(1, document.getElementById('warehouseSearch').value)">搜索</button>
+                    <div class="action-bar">
                         <button class="btn btn-primary" onclick="showWarehouseModal()">添加储物空间</button>
                     </div>
                 </div>
                 <table>
                     <tr><th>名称</th><th>位置</th><th>容量</th><th>描述</th><th>操作</th></tr>
-                    ${warehouses.length === 0 ? '<tr><td colspan="5" style="text-align:center;">暂无数据</td></tr>' : warehouses.map(w => '<tr><td>' + w.name + '</td><td>' + (w.location || '-') + '</td><td>' + (w.capacity || '-') + '</td><td>' + (w.description || '-') + '</td><td><div class="btn-group"><button class="btn btn-secondary" onclick="editWarehouse(\'' + w.id + '\')">编辑</button><button class="btn btn-danger" onclick="deleteWarehouse(\'' + w.id + '\')">删除</button></div></td></tr>').join('')}
+                    ${warehouses.length === 0 ? '<tr><td colspan="5" style="text-align:center;">暂无数据</td></tr>' : warehouses.map(w => '<tr><td>' + w.name + '</td><td>' + (w.location || '-') + '</td><td>' + (w.capacity || '-') + '</td><td>' + (w.description || '-') + '</td><td><div class="btn-group"><button class="btn btn-secondary" onclick="showWarehouseDetail(\'' + w.id + '\')">详情</button><button class="btn btn-secondary" onclick="editWarehouse(\'' + w.id + '\')">编辑</button><button class="btn btn-danger" onclick="deleteWarehouse(\'' + w.id + '\')">删除</button></div></td></tr>').join('')}
                 </table>
                 ${renderPagination('warehouses', totalPages.warehouses, currentPage.warehouses)}
             </div>
@@ -476,11 +580,46 @@ function editWarehouse(id) {
     });
 }
 
+function showWarehouseDetail(id) {
+    fetch(`${API_BASE}/warehouses/${id}`, { headers: getAuthHeader() })
+    .then(response => response.json())
+    .then(warehouse => {
+        document.getElementById('page-content').innerHTML += `
+            <div class="modal-overlay active" onclick="closeModal()">
+                <div class="modal" onclick="event.stopPropagation()" style="max-width: 800px;">
+                    <h3>储物空间详情</h3>
+                    <div style="margin-bottom: 15px;">
+                        <p><strong>名称：</strong>${warehouse.name}</p>
+                        <p><strong>位置：</strong>${warehouse.location || '-'}</p>
+                        <p><strong>容量：</strong>${warehouse.capacity || '-'}</p>
+                        <p><strong>描述：</strong>${warehouse.description || '-'}</p>
+                    </div>
+                    ${warehouse.shelves && warehouse.shelves.length > 0 ? `
+                    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
+                        <h4>包含的置物架 (${warehouse.shelves.length})</h4>
+                        <table style="width:100%; margin-top:10px;">
+                            <tr><th>名称</th><th>规格(列×层)</th></tr>
+                            ${warehouse.shelves.map(s => '<tr><td>' + s.name + '</td><td>' + s.columns + ' × ' + s.rows + '</td></tr>').join('')}
+                        </table>
+                    </div>
+                    ` : '<p style="color:#999; margin-top:15px;">暂无置物架</p>'}
+                    <div class="modal-footer" style="margin-top: 20px;">
+                        <button type="button" class="btn btn-secondary" onclick="closeModal()">关闭</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    })
+    .catch(error => {
+        showNotification('获取储物空间详情失败', 'error');
+    });
+}
+
 function showWarehouseModal(warehouse = null) {
     const isEdit = warehouse !== null;
     document.getElementById('page-content').innerHTML += `
         <div class="modal-overlay active" onclick="closeModal()">
-            <div class="modal" onclick="event.stopPropagation()">
+            <div class="modal" onclick="event.stopPropagation()" style="max-width: 800px;">
                 <h3>${isEdit ? '编辑储物空间' : '添加储物空间'}</h3>
                 <form id="warehouseForm">
                     <div class="form-group"><label>名称</label><input type="text" id="warehouseName" value="${warehouse?.name || ''}" required></div>
@@ -493,6 +632,15 @@ function showWarehouseModal(warehouse = null) {
                         <button type="submit" class="btn btn-primary">${isEdit ? '保存' : '添加'}</button>
                     </div>
                 </form>
+                ${isEdit && warehouse?.shelves && warehouse.shelves.length > 0 ? `
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
+                    <h4>包含的置物架 (${warehouse.shelves.length})</h4>
+                    <table style="width:100%; margin-top:10px;">
+                        <tr><th>名称</th><th>规格(列×层)</th></tr>
+                        ${warehouse.shelves.map(s => '<tr><td>' + s.name + '</td><td>' + s.columns + ' × ' + s.rows + '</td></tr>').join('')}
+                    </table>
+                </div>
+                ` : ''}
             </div>
         </div>
     `;
@@ -549,9 +697,7 @@ function loadShelves(page = 1, keyword = '') {
             <div class="card">
                 <div class="card-header">
                     <h2>置物架列表</h2>
-                    <div class="search-bar">
-                        <input type="text" id="shelfSearch" placeholder="搜索置物架名称..." value="${searchKeywords.shelves}">
-                        <button class="btn btn-secondary" onclick="loadShelves(1, document.getElementById('shelfSearch').value)">搜索</button>
+                    <div class="action-bar">
                         <button class="btn btn-primary" onclick="showShelfModal()">添加置物架</button>
                     </div>
                 </div>
@@ -559,7 +705,7 @@ function loadShelves(page = 1, keyword = '') {
                     <tr><th>名称</th><th>所属空间</th><th>列数</th><th>层数</th><th>操作</th></tr>
                     ${shelves.length === 0 ? '<tr><td colspan="5" style="text-align:center;">暂无数据</td></tr>' : shelves.map(s => {
                         const warehouse = warehouses.find(w => w.id === s.warehouse_id);
-                        return '<tr><td>' + s.name + '</td><td>' + (warehouse?.name || '-') + '</td><td>' + s.columns + '</td><td>' + s.rows + '</td><td><div class="btn-group"><button class="btn btn-secondary" onclick="editShelf(\'' + s.id + '\')">编辑</button><button class="btn btn-danger" onclick="deleteShelf(\'' + s.id + '\')">删除</button></div></td></tr>';
+                        return '<tr><td>' + s.name + '</td><td>' + (warehouse?.name || '-') + '</td><td>' + s.columns + '</td><td>' + s.rows + '</td><td><div class="btn-group"><button class="btn btn-secondary" onclick="showShelfDetail(\'' + s.id + '\')">详情</button><button class="btn btn-secondary" onclick="editShelf(\'' + s.id + '\')">编辑</button><button class="btn btn-danger" onclick="deleteShelf(\'' + s.id + '\')">删除</button></div></td></tr>';
                     }).join('')}
                 </table>
                 ${renderPagination('shelves', totalPages.shelves, currentPage.shelves)}
@@ -582,6 +728,70 @@ function editShelf(id) {
     });
 }
 
+function showShelfDetail(id) {
+    fetch(`${API_BASE}/shelves/${id}`, { headers: getAuthHeader() })
+    .then(response => response.json())
+    .then(shelf => {
+        fetch(`${API_BASE}/warehouses/${shelf.warehouse_id}`, { headers: getAuthHeader() })
+        .then(response => response.json())
+        .then(warehouse => {
+            document.getElementById('page-content').innerHTML += `
+                <div class="modal-overlay active" onclick="closeModal()">
+                    <div class="modal" onclick="event.stopPropagation()" style="max-width: 800px;">
+                        <h3>置物架详情</h3>
+                        <div style="margin-bottom: 15px;">
+                            <p><strong>名称：</strong>${shelf.name}</p>
+                            <p><strong>所属储物空间：</strong>${warehouse.name}</p>
+                            <p><strong>规格：</strong>${shelf.columns} 列 × ${shelf.rows} 层</p>
+                        </div>
+                        ${shelf.boxes && shelf.boxes.length > 0 ? `
+                        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
+                            <h4>包含的收纳盒 (${shelf.boxes.length})</h4>
+                            <table style="width:100%; margin-top:10px;">
+                                <tr><th>编号</th><th>位置(列-层)</th></tr>
+                                ${shelf.boxes.map(b => '<tr><td>' + b.box_no + '</td><td>' + (b.column > 0 ? b.column + '-' + b.row : '-') + '</td></tr>').join('')}
+                            </table>
+                        </div>
+                        ` : '<p style="color:#999; margin-top:15px;">暂无收纳盒</p>'}
+                        <div class="modal-footer" style="margin-top: 20px;">
+                            <button type="button" class="btn btn-secondary" onclick="closeModal()">关闭</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        })
+        .catch(() => {
+            document.getElementById('page-content').innerHTML += `
+                <div class="modal-overlay active" onclick="closeModal()">
+                    <div class="modal" onclick="event.stopPropagation()" style="max-width: 800px;">
+                        <h3>置物架详情</h3>
+                        <div style="margin-bottom: 15px;">
+                            <p><strong>名称：</strong>${shelf.name}</p>
+                            <p><strong>所属储物空间：</strong>-</p>
+                            <p><strong>规格：</strong>${shelf.columns} 列 × ${shelf.rows} 层</p>
+                        </div>
+                        ${shelf.boxes && shelf.boxes.length > 0 ? `
+                        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
+                            <h4>包含的收纳盒 (${shelf.boxes.length})</h4>
+                            <table style="width:100%; margin-top:10px;">
+                                <tr><th>编号</th><th>位置(列-层)</th></tr>
+                                ${shelf.boxes.map(b => '<tr><td>' + b.box_no + '</td><td>' + (b.column > 0 ? b.column + '-' + b.row : '-') + '</td></tr>').join('')}
+                            </table>
+                        </div>
+                        ` : '<p style="color:#999; margin-top:15px;">暂无收纳盒</p>'}
+                        <div class="modal-footer" style="margin-top: 20px;">
+                            <button type="button" class="btn btn-secondary" onclick="closeModal()">关闭</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+    })
+    .catch(error => {
+        showNotification('获取置物架详情失败', 'error');
+    });
+}
+
 function showShelfModal(shelf = null) {
     const isEdit = shelf !== null;
     fetch(`${API_BASE}/warehouses?page=1&page_size=1000`, { headers: getAuthHeader() })
@@ -590,7 +800,7 @@ function showShelfModal(shelf = null) {
         const warehouses = warehousesResult.items || warehousesResult;
         document.getElementById('page-content').innerHTML += `
             <div class="modal-overlay active" onclick="closeModal()">
-                <div class="modal" onclick="event.stopPropagation()">
+                <div class="modal" onclick="event.stopPropagation()" style="max-width: 800px;">
                     <h3>${isEdit ? '编辑置物架' : '添加置物架'}</h3>
                     <form id="shelfForm">
                         <div class="form-group"><label>名称</label><input type="text" id="shelfName" value="${shelf?.name || ''}" required></div>
@@ -605,6 +815,15 @@ function showShelfModal(shelf = null) {
                             <button type="submit" class="btn btn-primary">${isEdit ? '保存' : '添加'}</button>
                         </div>
                     </form>
+                    ${isEdit && shelf?.boxes && shelf.boxes.length > 0 ? `
+                    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
+                        <h4>包含的收纳盒 (${shelf.boxes.length})</h4>
+                        <table style="width:100%; margin-top:10px;">
+                            <tr><th>编号</th><th>位置(列-层)</th></tr>
+                            ${shelf.boxes.map(b => '<tr><td>' + b.box_no + '</td><td>' + (b.column > 0 ? b.column + '-' + b.row : '-') + '</td></tr>').join('')}
+                        </table>
+                    </div>
+                    ` : ''}
                 </div>
             </div>
         `;
@@ -648,12 +867,185 @@ function deleteShelf(id) {
     .catch(() => { showNotification('删除失败', 'error'); });
 }
 
-function loadBoxes(page = 1, keyword = '') {
+function loadUnits() {
+    fetch(`${API_BASE}/units`, { headers: getAuthHeader() })
+    .then(r => { if (!r.ok) throw new Error('获取单位列表失败'); return r.json(); })
+    .then(units => {
+        document.getElementById('page-content').innerHTML = `
+            <div class="card">
+                <div class="card-header">
+                    <h2>单位列表</h2>
+                    <div class="action-bar">
+                        <button class="btn btn-primary" onclick="showUnitModal()">添加单位</button>
+                    </div>
+                </div>
+                <table>
+                    <tr><th>名称</th><th>操作</th></tr>
+                    ${units.length === 0 ? '<tr><td colspan="2" style="text-align:center;">暂无数据</td></tr>' : units.map(u => '<tr><td>' + u.name + '</td><td><div class="btn-group"><button class="btn btn-secondary" onclick="editUnit(\'' + u.id + '\')">编辑</button><button class="btn btn-danger" onclick="deleteUnit(\'' + u.id + '\')">删除</button></div></td></tr>').join('')}
+                </table>
+            </div>
+        `;
+    })
+    .catch(error => {
+        showNotification('加载单位列表失败: ' + error.message, 'error');
+    });
+}
+
+function showUnitModal(unit = null) {
+    const isEdit = unit !== null;
+    document.getElementById('page-content').innerHTML += `
+        <div class="modal-overlay active" onclick="closeModal()">
+            <div class="modal" onclick="event.stopPropagation()">
+                <h3>${isEdit ? '编辑单位' : '添加单位'}</h3>
+                <form id="unitForm">
+                    <div class="form-group"><label>名称</label><input type="text" id="unitName" value="${unit?.name || ''}" required placeholder="如：个、箱、件、千克"></div>
+                    <input type="hidden" id="unitId" value="${unit?.id || ''}">
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="closeModal()">取消</button>
+                        <button type="submit" class="btn btn-primary">${isEdit ? '保存' : '添加'}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    `;
+    document.getElementById('unitForm').addEventListener('submit', handleUnitSubmit);
+}
+
+function handleUnitSubmit(e) {
+    e.preventDefault();
+    const id = document.getElementById('unitId').value;
+    const data = { name: document.getElementById('unitName').value };
+    const url = id ? `${API_BASE}/units/${id}` : `${API_BASE}/units`;
+    const method = id ? 'PUT' : 'POST';
+    fetch(url, { method, headers: { ...getAuthHeader(), 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+    .then(response => {
+        if (response.ok) {
+            showNotification(id ? '单位更新成功' : '单位添加成功', 'success');
+            closeModal();
+            loadUnits();
+        } else {
+            return response.json().then(data => { throw new Error(data.error || '操作失败'); });
+        }
+    })
+    .catch(error => { showNotification(error.message, 'error'); });
+}
+
+function editUnit(id) {
+    fetch(`${API_BASE}/units/${id}`, { headers: getAuthHeader() })
+    .then(response => response.json())
+    .then(unit => { showUnitModal(unit); })
+    .catch(() => { showNotification('获取单位信息失败', 'error'); });
+}
+
+function deleteUnit(id) {
+    if (!confirm('确定要删除这个单位吗？')) return;
+    fetch(`${API_BASE}/units/${id}`, { method: 'DELETE', headers: getAuthHeader() })
+    .then(response => {
+        return response.json().then(data => ({ response, data }));
+    })
+    .then(({ response, data }) => {
+        if (response.ok) {
+            showNotification('单位删除成功', 'success');
+            loadUnits();
+        } else {
+            showNotification(data.error || '删除失败', 'error');
+        }
+    })
+    .catch(() => { showNotification('删除失败', 'error'); });
+}
+
+function loadCategories() {
+    fetch(`${API_BASE}/categories`, { headers: getAuthHeader() })
+    .then(r => { if (!r.ok) throw new Error('获取分类列表失败'); return r.json(); })
+    .then(categories => {
+        document.getElementById('page-content').innerHTML = `
+            <div class="card">
+                <div class="card-header">
+                    <h2>分类列表</h2>
+                    <div class="action-bar">
+                        <button class="btn btn-primary" onclick="showCategoryModal()">添加分类</button>
+                    </div>
+                </div>
+                <table>
+                    <tr><th>名称</th><th>操作</th></tr>
+                    ${categories.length === 0 ? '<tr><td colspan="2" style="text-align:center;">暂无数据</td></tr>' : categories.map(c => '<tr><td>' + c.name + '</td><td><div class="btn-group"><button class="btn btn-secondary" onclick="editCategory(\'' + c.id + '\')">编辑</button><button class="btn btn-danger" onclick="deleteCategory(\'' + c.id + '\')">删除</button></div></td></tr>').join('')}
+                </table>
+            </div>
+        `;
+    })
+    .catch(error => {
+        showNotification('加载分类列表失败: ' + error.message, 'error');
+    });
+}
+
+function showCategoryModal(category = null) {
+    const isEdit = category !== null;
+    document.getElementById('page-content').innerHTML += `
+        <div class="modal-overlay active" onclick="closeModal()">
+            <div class="modal" onclick="event.stopPropagation()">
+                <h3>${isEdit ? '编辑分类' : '添加分类'}</h3>
+                <form id="categoryForm">
+                    <div class="form-group"><label>名称</label><input type="text" id="categoryName" value="${category?.name || ''}" required placeholder="如：电子产品、服装、食品"></div>
+                    <input type="hidden" id="categoryId" value="${category?.id || ''}">
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" onclick="closeModal()">取消</button>
+                        <button type="submit" class="btn btn-primary">${isEdit ? '保存' : '添加'}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    `;
+    document.getElementById('categoryForm').addEventListener('submit', handleCategorySubmit);
+}
+
+function handleCategorySubmit(e) {
+    e.preventDefault();
+    const id = document.getElementById('categoryId').value;
+    const data = { name: document.getElementById('categoryName').value };
+    const url = id ? `${API_BASE}/categories/${id}` : `${API_BASE}/categories`;
+    const method = id ? 'PUT' : 'POST';
+    fetch(url, { method, headers: { ...getAuthHeader(), 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+    .then(response => {
+        if (response.ok) {
+            showNotification(id ? '分类更新成功' : '分类添加成功', 'success');
+            closeModal();
+            loadCategories();
+        } else {
+            return response.json().then(data => { throw new Error(data.error || '操作失败'); });
+        }
+    })
+    .catch(error => { showNotification(error.message, 'error'); });
+}
+
+function editCategory(id) {
+    fetch(`${API_BASE}/categories/${id}`, { headers: getAuthHeader() })
+    .then(response => response.json())
+    .then(category => { showCategoryModal(category); })
+    .catch(() => { showNotification('获取分类信息失败', 'error'); });
+}
+
+function deleteCategory(id) {
+    if (!confirm('确定要删除这个分类吗？')) return;
+    fetch(`${API_BASE}/categories/${id}`, { method: 'DELETE', headers: getAuthHeader() })
+    .then(response => {
+        return response.json().then(data => ({ response, data }));
+    })
+    .then(({ response, data }) => {
+        if (response.ok) {
+            showNotification('分类删除成功', 'success');
+            loadCategories();
+        } else {
+            showNotification(data.error || '删除失败', 'error');
+        }
+    })
+    .catch(() => { showNotification('删除失败', 'error'); });
+}
+
+function loadBoxes(page = 1) {
     currentPage.boxes = page;
-    if (keyword !== undefined) searchKeywords.boxes = keyword;
 
     Promise.all([
-        fetch(`${API_BASE}/boxes?page=${page}&page_size=10&keyword=${encodeURIComponent(searchKeywords.boxes)}`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取收纳盒列表失败'); return r.json(); }),
+        fetch(`${API_BASE}/boxes?page=${page}&page_size=10`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取收纳盒列表失败'); return r.json(); }),
         fetch(`${API_BASE}/warehouses?page=1&page_size=1000`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取储物空间列表失败'); return r.json(); }),
         fetch(`${API_BASE}/shelves?page=1&page_size=1000`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取置物架列表失败'); return r.json(); })
     ])
@@ -667,9 +1059,7 @@ function loadBoxes(page = 1, keyword = '') {
             <div class="card">
                 <div class="card-header">
                     <h2>收纳盒列表</h2>
-                    <div class="search-bar">
-                        <input type="text" id="boxSearch" placeholder="搜索收纳盒编号..." value="${searchKeywords.boxes}">
-                        <button class="btn btn-secondary" onclick="loadBoxes(1, document.getElementById('boxSearch').value)">搜索</button>
+                    <div class="action-bar">
                         <button class="btn btn-primary" onclick="showBoxModal()">添加收纳盒</button>
                     </div>
                 </div>
@@ -679,7 +1069,7 @@ function loadBoxes(page = 1, keyword = '') {
                         const warehouse = warehouses.find(w => w.id === b.warehouse_id);
                         const shelf = shelves.find(s => s.id === b.shelf_id);
                         const pos = b.column > 0 ? b.column + '-' + b.row : '-';
-                        return '<tr><td>' + b.box_no + '</td><td>' + (warehouse?.name || '-') + '</td><td>' + (shelf?.name || '-') + '</td><td>' + pos + '</td><td><div class="btn-group"><button class="btn btn-secondary" onclick="editBox(\'' + b.id + '\')">编辑</button><button class="btn btn-danger" onclick="deleteBox(\'' + b.id + '\')">删除</button></div></td></tr>';
+                        return '<tr><td>' + b.box_no + '</td><td>' + (warehouse?.name || '-') + '</td><td>' + (shelf?.name || '-') + '</td><td>' + pos + '</td><td><div class="btn-group"><button class="btn btn-secondary" onclick="showBoxDetail(\'' + b.id + '\')">详情</button><button class="btn btn-secondary" onclick="editBox(\'' + b.id + '\')">编辑</button><button class="btn btn-danger" onclick="deleteBox(\'' + b.id + '\')">删除</button></div></td></tr>';
                     }).join('')}
                 </table>
                 ${renderPagination('boxes', totalPages.boxes, currentPage.boxes)}
@@ -702,6 +1092,50 @@ function editBox(id) {
     });
 }
 
+function showBoxDetail(id) {
+    Promise.all([
+        fetch(`${API_BASE}/boxes/${id}`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取收纳盒信息失败'); return r.json(); }),
+        fetch(`${API_BASE}/warehouses?page=1&page_size=1000`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取储物空间列表失败'); return r.json(); }),
+        fetch(`${API_BASE}/shelves?page=1&page_size=1000`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取置物架列表失败'); return r.json(); })
+    ])
+    .then(([box, warehousesResult, shelvesResult]) => {
+        const warehouses = warehousesResult.items || warehousesResult;
+        const shelves = shelvesResult.items || shelvesResult;
+        const warehouse = warehouses.find(w => w.id === box.warehouse_id);
+        const shelf = shelves.find(s => s.id === box.shelf_id);
+        const pos = box.column > 0 ? box.column + '-' + box.row : '-';
+
+        document.getElementById('page-content').innerHTML += `
+            <div class="modal-overlay active" onclick="closeModal()">
+                <div class="modal" onclick="event.stopPropagation()" style="max-width: 800px;">
+                    <h3>收纳盒详情</h3>
+                    <div style="margin-bottom: 15px;">
+                        <p><strong>编号：</strong>${box.box_no}</p>
+                        <p><strong>所属储物空间：</strong>${warehouse?.name || '-'}</p>
+                        <p><strong>所在置物架：</strong>${shelf?.name || '-'}</p>
+                        <p><strong>位置(列-层)：</strong>${pos}</p>
+                    </div>
+                    ${box.products && box.products.length > 0 ? `
+                    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
+                        <h4>包含的物品 (${box.products.length})</h4>
+                        <table style="width:100%; margin-top:10px;">
+                            <tr><th>名称</th><th>分类</th><th>数量</th><th>单位</th></tr>
+                            ${box.products.map(p => '<tr><td>' + p.name + '</td><td>' + (p.category || '-') + '</td><td>' + p.quantity + '</td><td>' + (p.unit || '-') + '</td></tr>').join('')}
+                        </table>
+                    </div>
+                    ` : '<p style="color:#999; margin-top:15px;">暂无物品</p>'}
+                    <div class="modal-footer" style="margin-top: 20px;">
+                        <button type="button" class="btn btn-secondary" onclick="closeModal()">关闭</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    })
+    .catch(error => {
+        showNotification('获取收纳盒详情失败', 'error');
+    });
+}
+
 function showBoxModal(box = null) {
     const isEdit = box !== null;
     Promise.all([
@@ -713,7 +1147,7 @@ function showBoxModal(box = null) {
         const shelves = shelvesResult.items || shelvesResult;
         document.getElementById('page-content').innerHTML += `
             <div class="modal-overlay active" onclick="closeModal()">
-                <div class="modal" onclick="event.stopPropagation()">
+                <div class="modal" onclick="event.stopPropagation()" style="max-width: 800px;">
                     <h3>${isEdit ? '编辑收纳盒' : '添加收纳盒'}</h3>
                     <form id="boxForm">
                         <div class="form-group"><label>编号</label><input type="text" id="boxNo" value="${box?.box_no || ''}" required placeholder="如：A001"></div>
@@ -729,6 +1163,15 @@ function showBoxModal(box = null) {
                             <button type="submit" class="btn btn-primary">${isEdit ? '保存' : '添加'}</button>
                         </div>
                     </form>
+                    ${isEdit && box?.products && box.products.length > 0 ? `
+                    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
+                        <h4>包含的物品 (${box.products.length})</h4>
+                        <table style="width:100%; margin-top:10px;">
+                            <tr><th>名称</th><th>分类</th><th>数量</th><th>单位</th></tr>
+                            ${box.products.map(p => '<tr><td>' + p.name + '</td><td>' + (p.category || '-') + '</td><td>' + p.quantity + '</td><td>' + (p.unit || '-') + '</td></tr>').join('')}
+                        </table>
+                    </div>
+                    ` : ''}
                 </div>
             </div>
         `;

@@ -1,6 +1,7 @@
 package models
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,12 +26,13 @@ func (u *User) BeforeCreate(tx *gorm.DB) (err error) {
 type Product struct {
 	ID          string  `gorm:"primaryKey;size:36" json:"id"`
 	Name        string  `gorm:"not null;index" json:"name"`
-	SKU         string  `gorm:"unique;not null;size:100" json:"sku"`
+	SKU         string  `gorm:"unique;size:100" json:"sku"`
 	Description string  `json:"description"`
-	Price       float64 `gorm:"not null" json:"price"`
+	Price       float64 `json:"price"`
 	Category    string  `gorm:"index" json:"category"`
 	Unit        string  `gorm:"not null;default:'件';size:20" json:"unit"`
 	// 货架位置信息
+	WarehouseID string     `gorm:"size:36;index" json:"warehouse_id"`
 	ShelfID     string     `gorm:"size:36;index" json:"shelf_id"`
 	BoxID       string     `gorm:"size:36;index" json:"box_id"`
 	ShelfColumn int        `json:"shelf_column"`
@@ -42,6 +44,10 @@ type Product struct {
 
 func (p *Product) BeforeCreate(tx *gorm.DB) (err error) {
 	p.ID = uuid.New().String()
+	// 如果SKU为空，自动生成一个唯一SKU
+	if p.SKU == "" {
+		p.SKU = "SKU-" + strings.ToUpper(uuid.New().String()[:8])
+	}
 	return
 }
 
@@ -54,6 +60,8 @@ type Warehouse struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	DeletedAt   *time.Time `gorm:"index" json:"deleted_at"`
+
+	Shelves []Shelf `gorm:"foreignKey:WarehouseID" json:"shelves"`
 }
 
 func (w *Warehouse) BeforeCreate(tx *gorm.DB) (err error) {

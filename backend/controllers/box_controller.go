@@ -55,7 +55,7 @@ func GetBoxesByWarehouse(c *gin.Context) {
 
 func GetBox(c *gin.Context) {
 	var box models.Box
-	if err := database.DB.Where("id = ?", c.Param("id")).First(&box).Error; err != nil {
+	if err := database.DB.Preload("Products").Where("id = ?", c.Param("id")).First(&box).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "箱子不存在"})
 		return
 	}

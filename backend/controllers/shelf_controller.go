@@ -54,7 +54,7 @@ func GetShelvesByWarehouse(c *gin.Context) {
 
 func GetShelf(c *gin.Context) {
 	var shelf models.Shelf
-	if err := database.DB.Where("id = ?", c.Param("id")).First(&shelf).Error; err != nil {
+	if err := database.DB.Preload("Boxes").Where("id = ?", c.Param("id")).First(&shelf).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "货架不存在"})
 		return
 	}
