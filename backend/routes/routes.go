@@ -3,10 +3,12 @@ package routes
 import (
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"warehouse-management/backend/controllers"
+	"warehouse-management/backend/database"
 	"warehouse-management/backend/middleware"
 )
 
@@ -43,22 +45,44 @@ func RegisterRoutes(r *gin.Engine) {
 	staticDir := getStaticDir()
 
 	r.Static("/static", staticDir)
+	
+	uploadsDir := filepath.Join(filepath.Dir(staticDir), "uploads")
+	r.Static("/uploads", uploadsDir)
+	
 	r.GET("/", func(c *gin.Context) {
 		indexPath := filepath.Join(staticDir, "index.html")
 		c.File(indexPath)
 	})
 
 	r.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok"})
+		dbStatus := "ok"
+		dbLatency := int64(0)
+
+		sqlDB, err := database.DB.DB()
+		if err == nil {
+			start := time.Now()
+			err = sqlDB.Ping()
+			dbLatency = time.Since(start).Milliseconds()
+			if err != nil {
+				dbStatus = "error: " + err.Error()
+			}
+		} else {
+			dbStatus = "unavailable"
+		}
+
+		c.JSON(200, gin.H{
+			"status": "ok",
+			"database": gin.H{
+				"status":  dbStatus,
+				"latency": dbLatency,
+			},
+		})
 	})
 
-	// 认证路由
-	auth := r.Group("/api/v1")
-	{
-		auth.POST("/register", controllers.Register)
-		auth.POST("/login", controllers.Login)
-		auth.POST("/refresh-token", controllers.RefreshToken)
-	}
+	// 认证路由 - 必须放在需要认证的路由之前
+	r.POST("/api/v1/register", controllers.Register)
+	r.POST("/api/v1/login", controllers.Login)
+	r.POST("/api/v1/refresh-token", controllers.RefreshToken)
 
 	// 需要认证的路由
 	api := r.Group("/api/v1")
@@ -70,6 +94,7 @@ func RegisterRoutes(r *gin.Engine) {
 		api.POST("/products", controllers.CreateProduct)
 		api.PUT("/products/:id", controllers.UpdateProduct)
 		api.DELETE("/products/:id", controllers.DeleteProduct)
+		api.POST("/products/:id/image", controllers.UploadProductImage)
 
 		// 仓库管理
 		api.GET("/warehouses", controllers.GetWarehouses)

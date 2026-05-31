@@ -328,6 +328,27 @@ table tr:hover {
     border-radius: 6px;
 }
 
+.search-bar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.search-bar input {
+    flex: 1;
+    min-width: 200px;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.search-bar .btn {
+    width: auto;
+    padding: 10px 20px;
+    font-size: 14px;
+}
+
 .notification {
     padding: 12px 20px;
     border-radius: 6px;

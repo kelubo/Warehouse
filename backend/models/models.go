@@ -27,10 +27,12 @@ type Product struct {
 	ID          string  `gorm:"primaryKey;size:36" json:"id"`
 	Name        string  `gorm:"not null;index" json:"name"`
 	SKU         string  `gorm:"unique;size:100" json:"sku"`
+	Specification string `json:"specification"` // 规格
 	Description string  `json:"description"`
 	Price       float64 `json:"price"`
 	Category    string  `gorm:"index" json:"category"`
 	Unit        string  `gorm:"not null;default:'件';size:20" json:"unit"`
+	ImageURL    string  `json:"image_url"`
 	// 货架位置信息
 	WarehouseID string     `gorm:"size:36;index" json:"warehouse_id"`
 	ShelfID     string     `gorm:"size:36;index" json:"shelf_id"`

@@ -6,6 +6,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+
+	"warehouse-management/backend/config"
 )
 
 func AuthMiddleware() gin.HandlerFunc {
@@ -19,7 +21,7 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-			return []byte("warehouse-secret-key"), nil
+			return []byte(config.LoadConfig().JWTSecret), nil
 		})
 
 		if err != nil || !token.Valid {

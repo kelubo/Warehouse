@@ -222,16 +222,31 @@ function loadPage(page) {
 
 function loadDashboard() {
     Promise.all([
-        fetch(`${API_BASE}/products?page=1&page_size=1000`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('products'); return r.json(); }),
-        fetch(`${API_BASE}/warehouses?page=1&page_size=1000`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('warehouses'); return r.json(); }),
-        fetch(`${API_BASE}/shelves?page=1&page_size=1000`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('shelves'); return r.json(); }),
-        fetch(`${API_BASE}/boxes?page=1&page_size=1000`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('boxes'); return r.json(); })
+        fetchWithRefresh(`${API_BASE}/products?page=1&page_size=1000`).then(r => { if (!r.ok) throw new Error('products'); return r.json(); }),
+        fetchWithRefresh(`${API_BASE}/warehouses?page=1&page_size=1000`).then(r => { if (!r.ok) throw new Error('warehouses'); return r.json(); }),
+        fetchWithRefresh(`${API_BASE}/shelves?page=1&page_size=1000`).then(r => { if (!r.ok) throw new Error('shelves'); return r.json(); }),
+        fetchWithRefresh(`${API_BASE}/boxes?page=1&page_size=1000`).then(r => { if (!r.ok) throw new Error('boxes'); return r.json(); }),
+        fetchWithRefresh(`${API_BASE}/categories`).then(r => { if (!r.ok) throw new Error('categories'); return r.json(); })
     ])
-    .then(([productsResult, warehousesResult, shelvesResult, boxesResult]) => {
+    .then(([productsResult, warehousesResult, shelvesResult, boxesResult, categoriesResult]) => {
         const products = productsResult.items || [];
         const warehouses = warehousesResult.items || [];
         const shelves = shelvesResult.items || [];
         const boxes = boxesResult.items || [];
+        const categories = categoriesResult || [];
+        
+        const categoryPathMap = {};
+        function buildCategoryPath(cats, parentPath = '') {
+            cats.forEach(c => {
+                const currentPath = parentPath ? parentPath + ' > ' + c.name : c.name;
+                categoryPathMap[c.id] = currentPath;
+                categoryPathMap[c.name] = currentPath;
+                if (c.children && c.children.length > 0) {
+                    buildCategoryPath(c.children, currentPath);
+                }
+            });
+        }
+        buildCategoryPath(categories);
 
         document.getElementById('page-content').innerHTML = `
             <div class="stats-grid">
@@ -258,7 +273,7 @@ function loadDashboard() {
                             location = (warehouse?.name || '') + ' > ' + shelf.name;
                             if (p.shelf_column > 0) location += ' (列' + p.shelf_column + '-层' + p.shelf_row + ')';
                         }
-                        return `<tr><td>${p.name}</td><td>${p.category || '-'}</td><td>${location}</td></tr>`;
+                        return `<tr><td>${p.name}</td><td>${categoryPathMap[p.category] || p.category || '-'}</td><td>${location}</td></tr>`;
                     }).join('')}
                 </table>
             </div>
@@ -266,13 +281,7 @@ function loadDashboard() {
     })
     .catch(error => {
         console.error('Dashboard load error:', error);
-        document.getElementById('page-content').innerHTML = `
-            <div class="card">
-                <h2>加载失败</h2>
-                <p>请检查是否已登录或联系管理员</p>
-                <button class="btn btn-primary" onclick="localStorage.removeItem('token'); localStorage.removeItem('access_token'); location.reload()">重新登录</button>
-            </div>
-        `;
+        logout();
     });
 }
 
@@ -296,14 +305,29 @@ function loadProducts(page = 1, keyword = '') {
         fetch(`${API_BASE}/products?page=${page}&page_size=10&keyword=${encodeURIComponent(searchKeywords.products)}`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取物品列表失败'); return r.json(); }),
         fetch(`${API_BASE}/warehouses?page=1&page_size=1000`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取储物空间列表失败'); return r.json(); }),
         fetch(`${API_BASE}/shelves?page=1&page_size=1000`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取置物架列表失败'); return r.json(); }),
-        fetch(`${API_BASE}/boxes?page=1&page_size=1000`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取收纳盒列表失败'); return r.json(); })
+        fetch(`${API_BASE}/boxes?page=1&page_size=1000`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取收纳盒列表失败'); return r.json(); }),
+        fetch(`${API_BASE}/categories`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取分类列表失败'); return r.json(); })
     ])
-    .then(([result, warehousesResult, shelvesResult, boxesResult]) => {
+    .then(([result, warehousesResult, shelvesResult, boxesResult, categoriesResult]) => {
         const products = result.items || result;
         const warehouses = warehousesResult.items || warehousesResult;
         const shelves = shelvesResult.items || shelvesResult;
         const boxes = boxesResult.items || boxesResult;
+        const categories = categoriesResult || [];
         totalPages.products = result.total_pages || 1;
+        
+        const categoryPathMap = {};
+        function buildCategoryPath(cats, parentPath = '') {
+            cats.forEach(c => {
+                const currentPath = parentPath ? parentPath + ' > ' + c.name : c.name;
+                categoryPathMap[c.id] = currentPath;
+                categoryPathMap[c.name] = currentPath;
+                if (c.children && c.children.length > 0) {
+                    buildCategoryPath(c.children, currentPath);
+                }
+            });
+        }
+        buildCategoryPath(categories);
 
         document.getElementById('page-content').innerHTML = `
             <div class="card">
@@ -316,8 +340,8 @@ function loadProducts(page = 1, keyword = '') {
                     </div>
                 </div>
                 <table>
-                    <tr><th>名称</th><th>分类</th><th>数量</th><th>单位</th><th>存放位置</th><th>操作</th></tr>
-                    ${products.length === 0 ? '<tr><td colspan="6" style="text-align:center;">暂无数据</td></tr>' : products.map(p => {
+                    <tr><th>图片</th><th>名称</th><th>分类</th><th>数量</th><th>单位</th><th>存放位置</th><th>操作</th></tr>
+                    ${products.length === 0 ? '<tr><td colspan="7" style="text-align:center;">暂无数据</td></tr>' : products.map(p => {
                         const shelf = shelves.find(s => s.id === p.shelf_id);
                         const box = boxes.find(b => b.id === p.box_id);
                         const warehouse = warehouses.find(w => w.id === (box?.warehouse_id || shelf?.warehouse_id));
@@ -328,7 +352,7 @@ function loadProducts(page = 1, keyword = '') {
                             location = (warehouse?.name || '') + ' > ' + shelf.name;
                             if (p.shelf_column > 0) location += ' (列' + p.shelf_column + '-层' + p.shelf_row + ')';
                         }
-                        return '<tr><td>' + p.name + '</td><td>' + (p.category || '-') + '</td><td>' + (p.quantity || 1) + '</td><td>' + (p.unit || '-') + '</td><td>' + location + '</td><td><div class="btn-group"><button class="btn btn-secondary" onclick="showProductDetail(\'' + p.id + '\')">详情</button><button class="btn btn-secondary" onclick="editProduct(\'' + p.id + '\')">编辑</button><button class="btn btn-danger" onclick="deleteProduct(\'' + p.id + '\')">删除</button></div></td></tr>';
+                        return '<tr><td>' + (p.image_url ? '<img src="' + p.image_url + '" style="width:40px;height:40px;object-fit:cover;border-radius:4px;" />' : '') + '</td><td>' + p.name + '</td><td>' + (categoryPathMap[p.category] || p.category || '-') + '</td><td>' + (p.quantity || 1) + '</td><td>' + (p.unit || '-') + '</td><td>' + location + '</td><td><div class="btn-group"><button class="btn btn-secondary" onclick="showProductDetail(\'' + p.id + '\')">详情</button><button class="btn btn-secondary" onclick="editProduct(\'' + p.id + '\')">编辑</button><button class="btn btn-danger" onclick="deleteProduct(\'' + p.id + '\')">删除</button></div></td></tr>';
                     }).join('')}
                 </table>
                 ${renderPagination('products', totalPages.products, currentPage.products)}
@@ -356,12 +380,28 @@ function showProductDetail(id) {
         fetch(`${API_BASE}/products/${id}`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取物品信息失败'); return r.json(); }),
         fetch(`${API_BASE}/warehouses?page=1&page_size=1000`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取储物空间列表失败'); return r.json(); }),
         fetch(`${API_BASE}/shelves?page=1&page_size=1000`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取置物架列表失败'); return r.json(); }),
-        fetch(`${API_BASE}/boxes?page=1&page_size=1000`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取收纳盒列表失败'); return r.json(); })
+        fetch(`${API_BASE}/boxes?page=1&page_size=1000`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取收纳盒列表失败'); return r.json(); }),
+        fetch(`${API_BASE}/categories`, { headers: getAuthHeader() }).then(r => { if (!r.ok) throw new Error('获取分类列表失败'); return r.json(); })
     ])
-    .then(([product, warehousesResult, shelvesResult, boxesResult]) => {
+    .then(([product, warehousesResult, shelvesResult, boxesResult, categoriesResult]) => {
         const warehouses = warehousesResult.items || warehousesResult;
         const shelves = shelvesResult.items || shelvesResult;
         const boxes = boxesResult.items || boxesResult;
+        const categories = categoriesResult || [];
+        
+        const categoryPathMap = {};
+        function buildCategoryPath(cats, parentPath = '') {
+            cats.forEach(c => {
+                const currentPath = parentPath ? parentPath + ' > ' + c.name : c.name;
+                categoryPathMap[c.id] = currentPath;
+                categoryPathMap[c.name] = currentPath;
+                if (c.children && c.children.length > 0) {
+                    buildCategoryPath(c.children, currentPath);
+                }
+            });
+        }
+        buildCategoryPath(categories);
+        
         const warehouse = warehouses.find(w => w.id === product.warehouse_id);
         const shelf = shelves.find(s => s.id === product.shelf_id);
         const box = boxes.find(b => b.id === product.box_id);
@@ -381,8 +421,9 @@ function showProductDetail(id) {
                 <div class="modal" onclick="event.stopPropagation()" style="max-width: 800px;">
                     <h3>物品详情</h3>
                     <div style="margin-bottom: 15px;">
+                        ${product.image_url ? '<div style="margin-bottom:15px;"><img src="' + product.image_url + '" style="max-width:200px;max-height:200px;object-fit:cover;border:1px solid #ddd;border-radius:4px;" /></div>' : ''}
                         <p><strong>名称：</strong>${product.name}</p>
-                        <p><strong>分类：</strong>${product.category || '-'}</p>
+                        <p><strong>分类：</strong>${categoryPathMap[product.category] || product.category || '-'}</p>
                         <p><strong>数量：</strong>${product.quantity || 1}</p>
                         <p><strong>存放位置：</strong>${location}</p>
                         <p><strong>描述：</strong>${product.description || '-'}</p>
@@ -445,17 +486,48 @@ function showProductModal(product = null) {
         const boxes = boxesResult.items || boxesResult;
         const units = unitsResult || [];
         const categories = categoriesResult || [];
+        
+        function buildCategoryOptions(cats, level = 0) {
+            let options = '';
+            cats.forEach(c => {
+                const prefix = level > 0 ? '　'.repeat(level) + '└─ ' : '';
+                options += `<option value="${c.name}" ${product?.category === c.name ? 'selected' : ''}>${prefix}${c.name}</option>`;
+                if (c.children && c.children.length > 0) {
+                    options += buildCategoryOptions(c.children, level + 1);
+                }
+            });
+            return options;
+        }
+        
+        const imageHtml = product?.image_url ? `
+            <div class="form-group">
+                <label>物品图片</label>
+                <div style="margin-top:10px;">
+                    <img src="${product.image_url}" style="max-width:200px;max-height:200px;border:1px solid #ddd;border-radius:4px;">
+                    <p style="margin-top:5px;font-size:12px;color:#666;">点击下方按钮更换图片</p>
+                </div>
+                <input type="file" id="productImage" accept="image/jpeg,image/png,image/gif" style="margin-top:10px;">
+            </div>
+        ` : `
+            <div class="form-group">
+                <label>物品图片</label>
+                <input type="file" id="productImage" accept="image/jpeg,image/png,image/gif">
+                <p style="font-size:12px;color:#666;">支持 JPG、PNG、GIF 格式</p>
+            </div>
+        `;
+        
         document.getElementById('page-content').innerHTML += `
             <div class="modal-overlay active" onclick="closeModal()">
                 <div class="modal" onclick="event.stopPropagation()">
                     <h3>${isEdit ? '编辑物品' : '添加物品'}</h3>
-                    <form id="productForm">
+                    <form id="productForm" enctype="multipart/form-data">
                         <div class="form-group"><label>物品名称</label><input type="text" id="productName" value="${product?.name || ''}" required></div>
                         <div class="form-row">
-                            <div class="form-group"><label>分类</label><select id="productCategory"><option value="">请选择</option>${categories.map(c => '<option value="' + c.name + '"' + (product?.category === c.name ? ' selected' : '') + '>' + c.name + '</option>').join('')}</select></div>
+                            <div class="form-group"><label>分类</label><select id="productCategory"><option value="">请选择</option>${buildCategoryOptions(categories)}</select></div>
                             <div class="form-group"><label>数量</label><input type="number" id="productQuantity" value="${product?.quantity || 1}" min="1" style="width:80px;"></div>
                             <div class="form-group"><label>单位</label><select id="productUnit" style="width:80px;"><option value="">请选择</option>${units.map(u => '<option value="' + u.name + '"' + (product?.unit === u.name ? ' selected' : '') + '>' + u.name + '</option>').join('')}</select></div>
                         </div>
+                        ${imageHtml}
                         <div class="form-group"><label>存放位置 - 储物空间</label><select id="productWarehouse"><option value="">无</option>${warehouses.map(w => '<option value="' + w.id + '"' + (product?.warehouse_id === w.id ? ' selected' : '') + '>' + w.name + '</option>').join('')}</select></div>
                         <div class="form-group"><label>存放位置 - 置物架</label><select id="productShelf"><option value="">无</option>${shelves.map(s => '<option value="' + s.id + '" data-columns="' + s.columns + '" data-rows="' + s.rows + '"' + (product?.shelf_id === s.id ? ' selected' : '') + '>' + s.name + '</option>').join('')}</select></div>
                         <div class="form-group"><label>存放位置 - 收纳盒</label><select id="productBox"><option value="">无</option>${boxes.map(b => '<option value="' + b.id + '"' + (product?.box_id === b.id ? ' selected' : '') + '>' + b.box_no + '</option>').join('')}</select></div>
@@ -465,6 +537,7 @@ function showProductModal(product = null) {
                         </div>
                         <div class="form-group"><label>备注</label><textarea id="productDescription">${product?.description || ''}</textarea></div>
                         <input type="hidden" id="productId" value="${product?.id || ''}">
+                        <input type="hidden" id="productImageUrl" value="${product?.image_url || ''}">
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" onclick="closeModal()">取消</button>
                             <button type="submit" class="btn btn-primary">${isEdit ? '保存' : '添加'}</button>
@@ -485,35 +558,124 @@ function showProductModal(product = null) {
 function handleProductSubmit(e) {
     e.preventDefault();
     const id = document.getElementById('productId').value;
-    const data = {
-        name: document.getElementById('productName').value,
-        category: document.getElementById('productCategory').value,
-        unit: document.getElementById('productUnit').value,
-        quantity: parseInt(document.getElementById('productQuantity').value) || 1,
-        warehouse_id: document.getElementById('productWarehouse').value,
-        shelf_id: document.getElementById('productShelf').value,
-        box_id: document.getElementById('productBox').value,
-        shelf_column: parseInt(document.getElementById('productShelfColumn').value) || 0,
-        shelf_row: parseInt(document.getElementById('productShelfRow').value) || 0,
-        description: document.getElementById('productDescription').value
-    };
-    const url = id ? `${API_BASE}/products/${id}` : `${API_BASE}/products`;
-    const method = id ? 'PUT' : 'POST';
-    fetch(url, { method, headers: { ...getAuthHeader(), 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
-    .then(response => {
-        if (response.ok) {
-            showNotification(id ? '物品更新成功' : '物品添加成功', 'success');
-            closeModal();
-            loadProducts();
+    const imageFile = document.getElementById('productImage').files[0];
+    const hasImage = imageFile !== undefined;
+    
+    if (hasImage) {
+        const formData = new FormData();
+        formData.append('image', imageFile);
+        formData.append('product_id', id || 'temp');
+        
+        if (!id) {
+            const data = {
+                name: document.getElementById('productName').value,
+                category: document.getElementById('productCategory').value,
+                unit: document.getElementById('productUnit').value,
+                quantity: parseInt(document.getElementById('productQuantity').value) || 1,
+                warehouse_id: document.getElementById('productWarehouse').value,
+                shelf_id: document.getElementById('productShelf').value,
+                box_id: document.getElementById('productBox').value,
+                shelf_column: parseInt(document.getElementById('productShelfColumn').value) || 0,
+                shelf_row: parseInt(document.getElementById('productShelfRow').value) || 0,
+                description: document.getElementById('productDescription').value
+            };
+            
+            fetch(`${API_BASE}/products`, {
+                method: 'POST',
+                headers: getAuthHeader(),
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(product => {
+                const imgFormData = new FormData();
+                imgFormData.append('image', imageFile);
+                
+                return fetch(`${API_BASE}/products/${product.id}/image`, {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token },
+                    body: imgFormData
+                });
+            })
+            .then(response => {
+                if (response.ok) {
+                    showNotification('物品添加成功', 'success');
+                    closeModal();
+                    loadProducts();
+                } else {
+                    response.json().then(data => {
+                        showNotification(data.error || '图片上传失败', 'error');
+                    });
+                }
+            })
+            .catch(() => { showNotification('操作失败', 'error'); });
         } else {
-            response.json().then(data => {
-                showNotification(data.error || '操作失败', 'error');
-            }).catch(() => {
-                showNotification('操作失败', 'error');
-            });
+            const data = {
+                name: document.getElementById('productName').value,
+                category: document.getElementById('productCategory').value,
+                unit: document.getElementById('productUnit').value,
+                quantity: parseInt(document.getElementById('productQuantity').value) || 1,
+                warehouse_id: document.getElementById('productWarehouse').value,
+                shelf_id: document.getElementById('productShelf').value,
+                box_id: document.getElementById('productBox').value,
+                shelf_column: parseInt(document.getElementById('productShelfColumn').value) || 0,
+                shelf_row: parseInt(document.getElementById('productShelfRow').value) || 0,
+                description: document.getElementById('productDescription').value
+            };
+            
+            Promise.all([
+                fetch(`${API_BASE}/products/${id}`, {
+                    method: 'PUT',
+                    headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                }),
+                fetch(`${API_BASE}/products/${id}/image`, {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token },
+                    body: formData
+                })
+            ])
+            .then(responses => {
+                if (responses.every(r => r.ok)) {
+                    showNotification('物品更新成功', 'success');
+                    closeModal();
+                    loadProducts();
+                } else {
+                    showNotification('操作失败', 'error');
+                }
+            })
+            .catch(() => { showNotification('操作失败', 'error'); });
         }
-    })
-    .catch(() => { showNotification('操作失败', 'error'); });
+    } else {
+        const data = {
+            name: document.getElementById('productName').value,
+            category: document.getElementById('productCategory').value,
+            unit: document.getElementById('productUnit').value,
+            quantity: parseInt(document.getElementById('productQuantity').value) || 1,
+            warehouse_id: document.getElementById('productWarehouse').value,
+            shelf_id: document.getElementById('productShelf').value,
+            box_id: document.getElementById('productBox').value,
+            shelf_column: parseInt(document.getElementById('productShelfColumn').value) || 0,
+            shelf_row: parseInt(document.getElementById('productShelfRow').value) || 0,
+            description: document.getElementById('productDescription').value
+        };
+        const url = id ? `${API_BASE}/products/${id}` : `${API_BASE}/products`;
+        const method = id ? 'PUT' : 'POST';
+        fetch(url, { method, headers: { ...getAuthHeader(), 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+        .then(response => {
+            if (response.ok) {
+                showNotification(id ? '物品更新成功' : '物品添加成功', 'success');
+                closeModal();
+                loadProducts();
+            } else {
+                response.json().then(data => {
+                    showNotification(data.error || '操作失败', 'error');
+                }).catch(() => {
+                    showNotification('操作失败', 'error');
+                });
+            }
+        })
+        .catch(() => { showNotification('操作失败', 'error'); });
+    }
 }
 
 function deleteProduct(id) {
@@ -957,8 +1119,108 @@ function deleteUnit(id) {
 function loadCategories() {
     fetch(`${API_BASE}/categories`, { headers: getAuthHeader() })
     .then(r => { if (!r.ok) throw new Error('获取分类列表失败'); return r.json(); })
-    .then(categories => {
+    .then(categoriesData => {
+        let treeHtml = '';
+        
+        function buildTree(categories, level = 0) {
+            categories.forEach((c, index) => {
+                const isLast = index === categories.length - 1;
+                const hasChildren = c.children && c.children.length > 0;
+                
+                const toggleClass = hasChildren ? 'tree-toggle' : 'tree-empty';
+                const toggleSymbol = hasChildren ? '▶' : '·';
+                
+                treeHtml += `
+                    <div class="tree-item" data-id="${c.id}">
+                        <div class="tree-row" style="padding-left: ${level * 20}px;">
+                            <span class="${toggleClass}" data-id="${c.id}">${toggleSymbol}</span>
+                            <span class="tree-name">${c.name}</span>
+                            <div class="tree-actions">
+                                <button class="btn btn-xs btn-secondary" onclick="editCategory('${c.id}')">编辑</button>
+                                <button class="btn btn-xs btn-danger" onclick="deleteCategory('${c.id}')">删除</button>
+                            </div>
+                        </div>
+                `;
+                
+                if (hasChildren) {
+                    treeHtml += `<div class="tree-children" id="children-${c.id}" style="display: none;">`;
+                    buildTree(c.children, level + 1);
+                    treeHtml += '</div>';
+                }
+                
+                treeHtml += '</div>';
+            });
+        }
+        
+        buildTree(categoriesData);
+        
         document.getElementById('page-content').innerHTML = `
+            <style>
+                .tree-container {
+                    padding: 10px 0;
+                }
+                .tree-item {
+                    position: relative;
+                }
+                .tree-row {
+                    display: flex;
+                    align-items: center;
+                    padding: 6px 12px;
+                    margin: 2px 0;
+                    border-radius: 4px;
+                    cursor: default;
+                    transition: all 0.2s ease;
+                }
+                .tree-row:hover {
+                    background-color: #f0f5ff;
+                }
+                .tree-toggle, .tree-empty {
+                    width: 16px;
+                    height: 16px;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 10px;
+                    color: #888;
+                    margin-right: 6px;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                }
+                .tree-toggle:hover {
+                    color: #4a90d9;
+                }
+                .tree-toggle.expanded {
+                    transform: rotate(90deg);
+                    color: #4a90d9;
+                }
+                .tree-empty {
+                    cursor: default;
+                    color: #ddd;
+                }
+                .tree-name {
+                    flex: 1;
+                    font-size: 14px;
+                    color: #333;
+                    font-weight: 500;
+                }
+                .tree-actions {
+                    display: none;
+                    gap: 4px;
+                }
+                .tree-row:hover .tree-actions {
+                    display: flex;
+                }
+                .btn-xs {
+                    padding: 2px 8px;
+                    font-size: 11px;
+                    border-radius: 3px;
+                }
+                .tree-children {
+                    margin-top: 2px;
+                    border-left: 1px solid #e8eef3;
+                    margin-left: 10px;
+                }
+            </style>
             <div class="card">
                 <div class="card-header">
                     <h2>分类列表</h2>
@@ -966,12 +1228,23 @@ function loadCategories() {
                         <button class="btn btn-primary" onclick="showCategoryModal()">添加分类</button>
                     </div>
                 </div>
-                <table>
-                    <tr><th>名称</th><th>操作</th></tr>
-                    ${categories.length === 0 ? '<tr><td colspan="2" style="text-align:center;">暂无数据</td></tr>' : categories.map(c => '<tr><td>' + c.name + '</td><td><div class="btn-group"><button class="btn btn-secondary" onclick="editCategory(\'' + c.id + '\')">编辑</button><button class="btn btn-danger" onclick="deleteCategory(\'' + c.id + '\')">删除</button></div></td></tr>').join('')}
-                </table>
+                <div class="tree-container">
+                    ${treeHtml || '<div style="padding: 40px; text-align: center; color: #999;">暂无分类数据</div>'}
+                </div>
             </div>
         `;
+        
+        document.querySelectorAll('.tree-toggle').forEach(el => {
+            el.addEventListener('click', function() {
+                const categoryId = this.getAttribute('data-id');
+                const children = document.getElementById(`children-${categoryId}`);
+                if (children) {
+                    const isHidden = children.style.display === 'none';
+                    children.style.display = isHidden ? 'block' : 'none';
+                    this.classList.toggle('expanded', isHidden);
+                }
+            });
+        });
     })
     .catch(error => {
         showNotification('加载分类列表失败: ' + error.message, 'error');
@@ -980,28 +1253,52 @@ function loadCategories() {
 
 function showCategoryModal(category = null) {
     const isEdit = category !== null;
-    document.getElementById('page-content').innerHTML += `
-        <div class="modal-overlay active" onclick="closeModal()">
-            <div class="modal" onclick="event.stopPropagation()">
-                <h3>${isEdit ? '编辑分类' : '添加分类'}</h3>
-                <form id="categoryForm">
-                    <div class="form-group"><label>名称</label><input type="text" id="categoryName" value="${category?.name || ''}" required placeholder="如：电子产品、服装、食品"></div>
-                    <input type="hidden" id="categoryId" value="${category?.id || ''}">
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" onclick="closeModal()">取消</button>
-                        <button type="submit" class="btn btn-primary">${isEdit ? '保存' : '添加'}</button>
+    let parentSelectHtml = '<select id="categoryParent"><option value="">无（作为一级分类）</option>';
+    fetch(`${API_BASE}/categories`, { headers: getAuthHeader() })
+        .then(r => r.json())
+        .then(categories => {
+            function addCategoryOptions(cats, level = 0) {
+                cats.forEach(c => {
+                    if (c.id !== category?.id) {
+                        const indent = '　'.repeat(level);
+                        const selected = c.id === category?.parent_id ? ' selected' : '';
+                        parentSelectHtml += `<option value="${c.id}"${selected}>${indent}${c.name}</option>`;
+                        if (c.children && c.children.length > 0) {
+                            addCategoryOptions(c.children, level + 1);
+                        }
+                    }
+                });
+            }
+            addCategoryOptions(categories);
+            parentSelectHtml += '</select>';
+            document.getElementById('page-content').innerHTML += `
+                <div class="modal-overlay active" onclick="closeModal()">
+                    <div class="modal" onclick="event.stopPropagation()">
+                        <h3>${isEdit ? '编辑分类' : '添加分类'}</h3>
+                        <form id="categoryForm">
+                            <div class="form-group"><label>名称</label><input type="text" id="categoryName" value="${category?.name || ''}" required placeholder="如：电子产品、服装、食品"></div>
+                            <div class="form-group"><label>父分类</label>${parentSelectHtml}</div>
+                            <input type="hidden" id="categoryId" value="${category?.id || ''}">
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" onclick="closeModal()">取消</button>
+                                <button type="submit" class="btn btn-primary">${isEdit ? '保存' : '添加'}</button>
+                            </div>
+                        </form>
                     </div>
-                </form>
-            </div>
-        </div>
-    `;
-    document.getElementById('categoryForm').addEventListener('submit', handleCategorySubmit);
+                </div>
+            `;
+            document.getElementById('categoryForm').addEventListener('submit', handleCategorySubmit);
+        });
 }
 
 function handleCategorySubmit(e) {
     e.preventDefault();
     const id = document.getElementById('categoryId').value;
+    const parentId = document.getElementById('categoryParent').value;
     const data = { name: document.getElementById('categoryName').value };
+    if (parentId) {
+        data.parent_id = parentId;
+    }
     const url = id ? `${API_BASE}/categories/${id}` : `${API_BASE}/categories`;
     const method = id ? 'PUT' : 'POST';
     fetch(url, { method, headers: { ...getAuthHeader(), 'Content-Type': 'application/json' }, body: JSON.stringify(data) })

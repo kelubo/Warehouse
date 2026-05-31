@@ -60,6 +60,9 @@ func Run() {
 	// 创建 Gin 引擎
 	utils.Info("Creating Gin engine...")
 	r := gin.Default()
+	
+	// 设置文件上传大小限制（32MB）
+	r.MaxMultipartMemory = 32 << 20
 
 	// 注册安全中间件
 	utils.Info("Registering security middlewares...")

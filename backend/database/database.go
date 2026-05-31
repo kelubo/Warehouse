@@ -113,6 +113,9 @@ func InitDB(cfg *config.Config) error {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
 
+	// 创建复合索引以优化查询性能
+	RunCompositeIndexes()
+
 	utils.Info("Database initialized successfully")
 	return nil
 }

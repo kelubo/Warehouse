@@ -14,6 +14,9 @@ func main() {
 		case "init":
 			initialize.Run()
 			return
+		case "migrate":
+			initialize.Migrate()
+			return
 		case "help":
 			printHelp()
 			return
@@ -31,8 +34,9 @@ func printHelp() {
 	fmt.Println("  warehouse-management [command]")
 	fmt.Println()
 	fmt.Println("命令:")
-	fmt.Println("  init    初始化数据库和配置")
-	fmt.Println("  help    显示帮助信息")
-	fmt.Println("  (空)    启动服务")
+	fmt.Println("  init     初始化数据库和配置")
+	fmt.Println("  migrate  运行数据库迁移")
+	fmt.Println("  help     显示帮助信息")
+	fmt.Println("  (空)     启动服务")
 	fmt.Println()
 }
